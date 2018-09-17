@@ -24,6 +24,9 @@ public class CameraInstance {
     private Handler readyHandler;
     private DisplayConfiguration displayConfiguration;
     private boolean open = false;
+    private boolean cameraClosed = true;
+    private Handler mainHandler;
+
     private CameraSettings cameraSettings = new CameraSettings();
 
     /**
@@ -39,6 +42,7 @@ public class CameraInstance {
         this.cameraThread = CameraThread.getInstance();
         this.cameraManager = new CameraManager(context);
         this.cameraManager.setCameraSettings(cameraSettings);
+        this.mainHandler = new Handler();
     }
 
     /**
@@ -111,6 +115,7 @@ public class CameraInstance {
         Util.validateMainThread();
 
         open = true;
+        cameraClosed = false;
 
         cameraThread.incrementAndEnqueue(opener);
     }
@@ -142,11 +147,31 @@ public class CameraInstance {
         }
     }
 
+    /**
+     * Changes the settings for Camera.
+     *
+     * @param callback {@link CameraParametersCallback}
+     */
+    public void changeCameraParameters(final CameraParametersCallback callback) {
+        Util.validateMainThread();
+
+        if (open) {
+            cameraThread.enqueue(new Runnable() {
+                @Override
+                public void run() {
+                    cameraManager.changeCameraParameters(callback);
+                }
+            });
+        }
+    }
+
     public void close() {
         Util.validateMainThread();
 
         if (open) {
             cameraThread.enqueue(closer);
+        } else {
+            cameraClosed = true;
         }
 
         open = false;
@@ -156,13 +181,25 @@ public class CameraInstance {
         return open;
     }
 
-    public void requestPreview(final PreviewCallback callback) {
-        validateOpen();
+    public boolean isCameraClosed() {
+        return cameraClosed;
+    }
 
-        cameraThread.enqueue(new Runnable() {
+    public void requestPreview(final PreviewCallback callback) {
+        mainHandler.post(new Runnable() {
             @Override
             public void run() {
-                cameraManager.requestPreviewFrame(callback);
+                if(!open) {
+                    Log.d(TAG, "Camera is closed, not requesting preview");
+                    return;
+                }
+
+                cameraThread.enqueue(new Runnable() {
+                    @Override
+                    public void run() {
+                        cameraManager.requestPreviewFrame(callback);
+                    }
+                });
             }
         });
     }
@@ -226,6 +263,10 @@ public class CameraInstance {
             } catch (Exception e) {
                 Log.e(TAG, "Failed to close camera", e);
             }
+
+            cameraClosed = true;
+
+            readyHandler.sendEmptyMessage(R.id.zxing_camera_closed);
 
             cameraThread.decrementInstances();
         }

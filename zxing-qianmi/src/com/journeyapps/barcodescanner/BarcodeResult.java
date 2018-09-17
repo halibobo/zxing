@@ -15,7 +15,7 @@ import java.util.Map;
 /**
  * This contains the result of a barcode scan.
  *
- * This class delegate all read-only fields of {@link com.google.zxing.Result},
+ * This class delegate all read-only fields of {@link Result},
  * and adds a bitmap with scanned barcode.
  */
 public class BarcodeResult {
@@ -43,7 +43,7 @@ public class BarcodeResult {
     }
 
     /**
-     * @return wrapped {@link com.google.zxing.Result}
+     * @return wrapped {@link Result}
      */
     public Result getResult() {
         return mResult;

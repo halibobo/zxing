@@ -16,6 +16,7 @@ import com.google.zxing.client.android.DecodeFormatManager;
 import com.google.zxing.client.android.DecodeHintManager;
 import com.google.zxing.client.android.Intents;
 import com.google.zxing.client.android.R;
+import com.journeyapps.barcodescanner.camera.CameraParametersCallback;
 import com.journeyapps.barcodescanner.camera.CameraSettings;
 
 import java.util.List;
@@ -146,8 +147,8 @@ public class DecoratedBarcodeView extends FrameLayout {
             setStatusText(customPromptMessage);
         }
 
-        // Check to see if the scan should be inverted.
-        boolean inverted = intent.getBooleanExtra(Intents.Scan.INVERTED_SCAN, false);
+        // Check what type of scan. Default: normal scan
+        int scanType = intent.getIntExtra(Intents.Scan.SCAN_TYPE, 0);
 
         String characterSet = intent.getStringExtra(Intents.Scan.CHARACTER_SET);
 
@@ -155,7 +156,7 @@ public class DecoratedBarcodeView extends FrameLayout {
         reader.setHints(decodeHints);
 
         barcodeView.setCameraSettings(settings);
-        barcodeView.setDecoderFactory(new DefaultDecoderFactory(decodeFormats, decodeHints, characterSet, inverted));
+        barcodeView.setDecoderFactory(new DefaultDecoderFactory(decodeFormats, decodeHints, characterSet, scanType));
     }
 
     public void setStatusText(String text) {
@@ -170,6 +171,13 @@ public class DecoratedBarcodeView extends FrameLayout {
      */
     public void pause() {
         barcodeView.pause();
+    }
+
+    /**
+     * @see BarcodeView#pauseAndWait()
+     */
+    public void pauseAndWait() {
+        barcodeView.pauseAndWait();
     }
 
     /**
@@ -225,6 +233,16 @@ public class DecoratedBarcodeView extends FrameLayout {
         if (torchListener != null) {
             torchListener.onTorchOff();
         }
+    }
+
+    /**
+     * Changes the settings for Camera.
+     * Must be called after {@link #resume()}.
+     *
+     * @param callback {@link CameraParametersCallback}
+     */
+    public void changeCameraParameters(CameraParametersCallback callback) {
+        barcodeView.changeCameraParameters(callback);
     }
 
     /**

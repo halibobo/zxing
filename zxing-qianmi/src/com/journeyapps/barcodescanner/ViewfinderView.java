@@ -22,12 +22,9 @@ import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.View;
 
 import com.google.zxing.ResultPoint;
@@ -46,7 +43,7 @@ public class ViewfinderView extends View {
     protected static final String TAG = ViewfinderView.class.getSimpleName();
 
     protected static final int[] SCANNER_ALPHA = {0, 64, 128, 192, 255, 192, 128, 64};
-    protected static final long ANIMATION_DELAY = 10L;
+    protected static final long ANIMATION_DELAY = 80L;
     protected static final int CURRENT_POINT_OPACITY = 0xA0;
     protected static final int MAX_RESULT_POINTS = 20;
     protected static final int POINT_SIZE = 6;
@@ -57,7 +54,6 @@ public class ViewfinderView extends View {
     protected final int resultColor;
     protected final int laserColor;
     protected final int resultPointColor;
-    protected final int frameColor;
     protected int scannerAlpha;
     protected List<ResultPoint> possibleResultPoints;
     protected List<ResultPoint> lastPossibleResultPoints;
@@ -67,58 +63,6 @@ public class ViewfinderView extends View {
     // stopped.
     protected Rect framingRect;
     protected Rect previewFramingRect;
-
-    /**
-     * 手机的屏幕密度
-     */
-    private static float density;
-
-    /**
-     * 四个绿色边角对应的长度
-     */
-    private int ScreenRate;
-
-    /**
-     * 四个绿色边角对应的宽度
-     */
-    private static final int CORNER_WIDTH = 10;
-
-    /**
-     * 中间滑动线的最顶端位置
-     */
-    private int slideTop;
-
-    /**
-     * 中间滑动线的最底端位置
-     */
-    private int slideBottom;
-
-    /**
-     * 中间那条线每次刷新移动的距离
-     */
-    private static final int SPEEN_DISTANCE = 10;
-
-    /**
-     * 扫描框中的中间线的宽度
-     */
-    private static final int MIDDLE_LINE_WIDTH = 1;
-
-    /**
-     * 扫描框中水平线和垂直线间隔
-     */
-    private static final int MIDDLE_LINE_SPACE = 10;
-
-    /**
-     * 扫描框中的中间线的与扫描框左右的间隙
-     */
-    private static final int MIDDLE_LINE_PADDING = 0;
-
-    /**
-     * 扫描框中的中间线的Alpha
-     */
-    private int LINE_RECT_ALPHA = 0;
-
-    boolean isFirst;
 
     // This constructor is used when the class is built from an XML resource.
     public ViewfinderView(Context context, AttributeSet attrs) {
@@ -140,18 +84,12 @@ public class ViewfinderView extends View {
                 resources.getColor(R.color.zxing_viewfinder_laser));
         this.resultPointColor = attributes.getColor(R.styleable.zxing_finder_zxing_possible_result_points,
                 resources.getColor(R.color.zxing_possible_result_points));
-        this.frameColor = attributes.getColor(R.styleable.zxing_finder_zxing_frame_color,
-                resources.getColor(R.color.zxing_frame_color));
 
         attributes.recycle();
 
         scannerAlpha = 0;
-        possibleResultPoints = new ArrayList<>(5);
-        lastPossibleResultPoints = null;
-
-        density = context.getResources().getDisplayMetrics().density;
-        //将像素转换成dp
-        ScreenRate = (int) (20 * density);
+        possibleResultPoints = new ArrayList<>(MAX_RESULT_POINTS);
+        lastPossibleResultPoints = new ArrayList<>(MAX_RESULT_POINTS);
     }
 
     public void setCameraPreview(CameraPreview view) {
@@ -177,22 +115,26 @@ public class ViewfinderView extends View {
             public void cameraError(Exception error) {
 
             }
+
+            @Override
+            public void cameraClosed() {
+
+            }
         });
     }
 
     protected void refreshSizes() {
-        if (cameraPreview == null) {
+        if(cameraPreview == null) {
             return;
         }
         Rect framingRect = cameraPreview.getFramingRect();
         Rect previewFramingRect = cameraPreview.getPreviewFramingRect();
-        if (framingRect != null && previewFramingRect != null) {
+        if(framingRect != null && previewFramingRect != null) {
             this.framingRect = framingRect;
             this.previewFramingRect = previewFramingRect;
         }
     }
 
-    @SuppressLint("DrawAllocation")
     @Override
     public void onDraw(Canvas canvas) {
         refreshSizes();
@@ -200,19 +142,11 @@ public class ViewfinderView extends View {
             return;
         }
 
+        final Rect frame = framingRect;
+        final Rect previewFrame = previewFramingRect;
 
-        Rect frame = framingRect;
-        Rect previewFrame = previewFramingRect;
-
-        //初始化中间线滑动的最上边和最下边
-        if (!isFirst) {
-            isFirst = true;
-            slideTop = frame.top;
-            slideBottom = frame.bottom;
-        }
-
-        int width = canvas.getWidth();
-        int height = canvas.getHeight();
+        final int width = canvas.getWidth();
+        final int height = canvas.getHeight();
 
         // Draw the exterior (i.e. outside the framing rect) darkened
         paint.setColor(resultBitmap != null ? resultColor : maskColor);
@@ -228,99 +162,59 @@ public class ViewfinderView extends View {
         } else {
 
             // Draw a red "laser scanner" line through the middle to show decoding is active
-//            paint.setColor(laserColor);
-//            paint.setAlpha(SCANNER_ALPHA[scannerAlpha]);
-//            scannerAlpha = (scannerAlpha + 1) % SCANNER_ALPHA.length;
-//            int middle = frame.height() / 2 + frame.top;
-//            canvas.drawRect(frame.left + 2, middle - 1, frame.right - 1, middle + 2, paint);
+            paint.setColor(laserColor);
+            paint.setAlpha(SCANNER_ALPHA[scannerAlpha]);
+            scannerAlpha = (scannerAlpha + 1) % SCANNER_ALPHA.length;
+            final int middle = frame.height() / 2 + frame.top;
+            canvas.drawRect(frame.left + 2, middle - 1, frame.right - 1, middle + 2, paint);
 
-            //画扫描框边上的角，总共8个部分
-            paint.setColor(frameColor);
-            canvas.drawRect(frame.left, frame.top, frame.left + ScreenRate,
-                    frame.top + CORNER_WIDTH, paint);
-            canvas.drawRect(frame.left, frame.top, frame.left + CORNER_WIDTH, frame.top
-                    + ScreenRate, paint);
-            canvas.drawRect(frame.right - ScreenRate, frame.top, frame.right,
-                    frame.top + CORNER_WIDTH, paint);
-            canvas.drawRect(frame.right - CORNER_WIDTH, frame.top, frame.right, frame.top
-                    + ScreenRate, paint);
-            canvas.drawRect(frame.left, frame.bottom - CORNER_WIDTH, frame.left
-                    + ScreenRate, frame.bottom, paint);
-            canvas.drawRect(frame.left, frame.bottom - ScreenRate,
-                    frame.left + CORNER_WIDTH, frame.bottom, paint);
-            canvas.drawRect(frame.right - ScreenRate, frame.bottom - CORNER_WIDTH,
-                    frame.right, frame.bottom, paint);
-            canvas.drawRect(frame.right - CORNER_WIDTH, frame.bottom - ScreenRate,
-                    frame.right, frame.bottom, paint);
+            final float scaleX = frame.width() / (float) previewFrame.width();
+            final float scaleY = frame.height() / (float) previewFrame.height();
 
+            final int frameLeft = frame.left;
+            final int frameTop = frame.top;
 
-            //绘制中间的线,每次刷新界面，中间的线往下移动SPEEN_DISTANCE
-            slideTop += SPEEN_DISTANCE;
-            LINE_RECT_ALPHA += 2 ;
-            if (slideTop >= frame.bottom) {
-                slideTop = frame.top;
-                LINE_RECT_ALPHA = 0;
-            }
-
-            //特殊的一条线的高度
-            int LINE_RECT_WIDTH = 4;
-            paint.setAlpha(100);
-            Rect lineRect = new Rect(frame.left + MIDDLE_LINE_PADDING, slideTop - LINE_RECT_WIDTH / 2, frame.right - MIDDLE_LINE_PADDING, slideTop + LINE_RECT_WIDTH / 2);
-            canvas.drawRect(lineRect, paint);
-
-            drawMutliRect(canvas, lineRect, frame);
-
-
-//            //画扫描框下面的字
-//            paint.setColor(Color.WHITE);
-//            paint.setTextSize(TEXT_SIZE * density);
-//            paint.setAlpha(0x40);
-//            paint.setTypeface(Typeface.create("System", Typeface.BOLD));
-//            canvas.drawText(getResources().getString(R.string.scan_text), frame.left, (float) (frame.bottom + (float)TEXT_PADDING_TOP *density), paint);
-
-
-            float scaleX = frame.width() / (float) previewFrame.width();
-            float scaleY = frame.height() / (float) previewFrame.height();
-
-            List<ResultPoint> currentPossible = possibleResultPoints;
-            List<ResultPoint> currentLast = lastPossibleResultPoints;
-            int frameLeft = frame.left;
-            int frameTop = frame.top;
-            if (currentPossible.isEmpty()) {
-                lastPossibleResultPoints = null;
-            } else {
-                possibleResultPoints = new ArrayList<>(5);
-                lastPossibleResultPoints = currentPossible;
-                paint.setAlpha(CURRENT_POINT_OPACITY);
-                paint.setColor(resultPointColor);
-                for (ResultPoint point : currentPossible) {
-                    canvas.drawCircle(frameLeft + (int) (point.getX() * scaleX),
-                            frameTop + (int) (point.getY() * scaleY),
-                            POINT_SIZE, paint);
-                }
-            }
-            if (currentLast != null) {
+            // draw the last possible result points
+            if (!lastPossibleResultPoints.isEmpty()) {
                 paint.setAlpha(CURRENT_POINT_OPACITY / 2);
                 paint.setColor(resultPointColor);
                 float radius = POINT_SIZE / 2.0f;
-                for (ResultPoint point : currentLast) {
-                    canvas.drawCircle(frameLeft + (int) (point.getX() * scaleX),
+                for (final ResultPoint point : lastPossibleResultPoints) {
+                    canvas.drawCircle(
+                            frameLeft + (int) (point.getX() * scaleX),
                             frameTop + (int) (point.getY() * scaleY),
-                            radius, paint);
+                            radius, paint
+                    );
                 }
+                lastPossibleResultPoints.clear();
+            }
+
+            // draw current possible result points
+            if (!possibleResultPoints.isEmpty()) {
+                paint.setAlpha(CURRENT_POINT_OPACITY);
+                paint.setColor(resultPointColor);
+                for (final ResultPoint point : possibleResultPoints) {
+                    canvas.drawCircle(
+                            frameLeft + (int) (point.getX() * scaleX),
+                            frameTop + (int) (point.getY() * scaleY),
+                            POINT_SIZE, paint
+                    );
+                }
+
+                // swap and clear buffers
+                final List<ResultPoint> temp = possibleResultPoints;
+                possibleResultPoints = lastPossibleResultPoints;
+                lastPossibleResultPoints = temp;
+                possibleResultPoints.clear();
             }
 
             // Request another update at the animation interval, but only repaint the laser line,
             // not the entire viewfinder mask.
-//            postInvalidateDelayed(ANIMATION_DELAY,
-//                    frame.left - POINT_SIZE,
-//                    frame.top - POINT_SIZE,
-//                    frame.right + POINT_SIZE,
-//                    frame.bottom + POINT_SIZE);
-
-            //只刷新扫描框的内容，其他地方不刷新
-            postInvalidateDelayed(ANIMATION_DELAY, frame.left, frame.top,
-                    frame.right, frame.bottom);
+            postInvalidateDelayed(ANIMATION_DELAY,
+                    frame.left - POINT_SIZE,
+                    frame.top - POINT_SIZE,
+                    frame.right + POINT_SIZE,
+                    frame.bottom + POINT_SIZE);
         }
     }
 
@@ -349,56 +243,7 @@ public class ViewfinderView extends View {
      * @param point a point to draw, relative to the preview frame
      */
     public void addPossibleResultPoint(ResultPoint point) {
-        List<ResultPoint> points = possibleResultPoints;
-        points.add(point);
-        int size = points.size();
-        if (size > MAX_RESULT_POINTS) {
-            // trim it
-            points.subList(0, size - MAX_RESULT_POINTS / 2).clear();
-        }
-    }
-
-    public void drawMutliRect(Canvas canvas, Rect rect, Rect frame) {
-        Paint paint = new Paint();
-        paint.setColor(frameColor);
-        paint.setAlpha(100);
-
-
-        //绘制边框
-        int FRAME_WIDTH = 4;//边框的厚度
-        canvas.drawRect(frame.left, frame.top, frame.left + FRAME_WIDTH, frame.bottom, paint);
-        canvas.drawRect(frame.left, frame.top, frame.right, frame.top + FRAME_WIDTH, paint);
-        canvas.drawRect(frame.right - FRAME_WIDTH, frame.top, frame.right, frame.bottom, paint);
-        canvas.drawRect(frame.left, frame.bottom - FRAME_WIDTH, frame.right, frame.bottom, paint);
-
-        Rect[] arrHorRect = new Rect[frame.width() / (MIDDLE_LINE_WIDTH + MIDDLE_LINE_SPACE)];
-        Rect[] arrVerRect = new Rect[frame.width() / (MIDDLE_LINE_WIDTH + MIDDLE_LINE_SPACE)];
-
-        paint.setAlpha(LINE_RECT_ALPHA);
-        for (int i = 0; i < arrHorRect.length; i++) {
-            arrHorRect[i] = new Rect(
-                    rect.left, frame.top + i * MIDDLE_LINE_WIDTH + i * MIDDLE_LINE_SPACE,
-                    rect.right, frame.top + i * MIDDLE_LINE_WIDTH + i * MIDDLE_LINE_SPACE + MIDDLE_LINE_WIDTH);
-
-            arrVerRect[i] = new Rect(
-                    frame.left + i * MIDDLE_LINE_WIDTH + i * MIDDLE_LINE_SPACE, frame.top,
-                    frame.left + i * MIDDLE_LINE_WIDTH + i * MIDDLE_LINE_SPACE + MIDDLE_LINE_WIDTH, rect.top);
-
-            //水平线
-            if (arrHorRect[i].top < rect.top) {
-                canvas.drawRect(arrHorRect[i], paint);
-            }
-
-            //垂直线
-            if (arrVerRect[i].right < frame.right) {
-                canvas.drawRect(arrVerRect[i], paint);
-            }
-        }
-
-        //销毁
-        arrHorRect = null;
-        arrVerRect = null;
-
-
+        if (possibleResultPoints.size() < MAX_RESULT_POINTS)
+            possibleResultPoints.add(point);
     }
 }

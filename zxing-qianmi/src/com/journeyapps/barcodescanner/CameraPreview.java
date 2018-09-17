@@ -23,6 +23,7 @@ import android.view.WindowManager;
 
 import com.google.zxing.client.android.R;
 import com.journeyapps.barcodescanner.camera.CameraInstance;
+import com.journeyapps.barcodescanner.camera.CameraParametersCallback;
 import com.journeyapps.barcodescanner.camera.CameraSettings;
 import com.journeyapps.barcodescanner.camera.CameraSurface;
 import com.journeyapps.barcodescanner.camera.CenterCropStrategy;
@@ -79,6 +80,11 @@ public class CameraPreview extends ViewGroup {
          * @param error the error
          */
         void cameraError(Exception error);
+
+        /**
+         * The camera has been closed.
+         */
+        void cameraClosed();
     }
 
     private static final String TAG = CameraPreview.class.getSimpleName();
@@ -294,18 +300,13 @@ public class CameraPreview extends ViewGroup {
         }
     }
 
-    @SuppressWarnings("deprecation")
-    @SuppressLint("NewAPI")
     private void setupSurfaceView() {
-        if(useTextureView && Build.VERSION.SDK_INT >= 14) {
+        if(useTextureView) {
             textureView = new TextureView(getContext());
             textureView.setSurfaceTextureListener(surfaceTextureListener());
             addView(textureView);
         } else {
             surfaceView = new SurfaceView(getContext());
-            if (Build.VERSION.SDK_INT < 11) {
-                surfaceView.getHolder().setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
-            }
             surfaceView.getHolder().addCallback(surfaceCallback);
             addView(surfaceView);
         }
@@ -347,6 +348,13 @@ public class CameraPreview extends ViewGroup {
         public void cameraError(Exception error) {
             for (StateListener listener : stateListeners) {
                 listener.cameraError(error);
+            }
+        }
+
+        @Override
+        public void cameraClosed() {
+            for (StateListener listener : stateListeners) {
+                listener.cameraClosed();
             }
         }
     };
@@ -395,6 +403,18 @@ public class CameraPreview extends ViewGroup {
         torchOn = on;
         if (cameraInstance != null) {
             cameraInstance.setTorch(on);
+        }
+    }
+
+    /**
+     * Changes the settings for Camera.
+     * Must be called after {@link #resume()}.
+     *
+     * @param callback {@link CameraParametersCallback}
+     */
+    public void changeCameraParameters(CameraParametersCallback callback) {
+        if (cameraInstance != null) {
+            cameraInstance.changeCameraParameters(callback);
         }
     }
 
@@ -496,7 +516,7 @@ public class CameraPreview extends ViewGroup {
         if (currentSurfaceSize != null && previewSize != null && surfaceRect != null) {
             if (surfaceView != null && currentSurfaceSize.equals(new Size(surfaceRect.width(), surfaceRect.height()))) {
                 startCameraPreview(new CameraSurface(surfaceView.getHolder()));
-            } else if(textureView != null && Build.VERSION.SDK_INT >= 14 && textureView.getSurfaceTexture() != null) {
+            } else if(textureView != null && textureView.getSurfaceTexture() != null) {
                 if(previewSize != null) {
                     Matrix transform = calculateTextureTransform(new Size(textureView.getWidth(), textureView.getHeight()), previewSize);
                     textureView.setTransform(transform);
@@ -522,7 +542,7 @@ public class CameraPreview extends ViewGroup {
             } else {
                 surfaceView.layout(surfaceRect.left, surfaceRect.top, surfaceRect.right, surfaceRect.bottom);
             }
-        } else if(textureView != null && Build.VERSION.SDK_INT >= 14) {
+        } else if(textureView != null) {
             textureView.layout(0, 0, getWidth(), getHeight());
         }
     }
@@ -591,7 +611,7 @@ public class CameraPreview extends ViewGroup {
         } else if(surfaceView != null) {
             // Install the callback and wait for surfaceCreated() to init the camera.
             surfaceView.getHolder().addCallback(surfaceCallback);
-        } else if(textureView != null && Build.VERSION.SDK_INT >= 14) {
+        } else if(textureView != null) {
             if(textureView.isAvailable()) {
                 surfaceTextureListener().onSurfaceTextureAvailable(textureView.getSurfaceTexture(), textureView.getWidth(), textureView.getHeight());
             } else {
@@ -620,12 +640,14 @@ public class CameraPreview extends ViewGroup {
             cameraInstance.close();
             cameraInstance = null;
             previewActive = false;
+        } else {
+            stateHandler.sendEmptyMessage(R.id.zxing_camera_closed);
         }
         if (currentSurfaceSize == null && surfaceView != null) {
             SurfaceHolder surfaceHolder = surfaceView.getHolder();
             surfaceHolder.removeCallback(surfaceCallback);
         }
-        if(currentSurfaceSize == null && textureView != null && Build.VERSION.SDK_INT >= 14) {
+        if(currentSurfaceSize == null && textureView != null) {
             textureView.setSurfaceTextureListener(null);
         }
 
@@ -635,6 +657,28 @@ public class CameraPreview extends ViewGroup {
         rotationListener.stop();
 
         fireState.previewStopped();
+    }
+
+    /**
+     * Pause scanning and preview; waiting for the Camera to be closed.
+     *
+     * This blocks the main thread.
+     */
+    public void pauseAndWait() {
+        CameraInstance instance = getCameraInstance();
+        pause();
+        long startTime = System.nanoTime();
+        while(instance != null && !instance.isCameraClosed()) {
+            if(System.nanoTime() - startTime > 2000000000) {
+                // Don't wait for longer than 2 seconds
+                break;
+            }
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
     }
 
     public Size getFramingRectSize() {
@@ -820,5 +864,13 @@ public class CameraPreview extends ViewGroup {
         super.onRestoreInstanceState(superState);
         boolean torch = myState.getBoolean("torch");
         setTorch(torch);
+    }
+
+    /**
+     *
+     * @return true if the camera has been closed in a background thread.
+     */
+    public boolean isCameraClosed() {
+        return cameraInstance == null || cameraInstance.isCameraClosed();
     }
 }

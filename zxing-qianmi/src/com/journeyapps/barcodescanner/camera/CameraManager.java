@@ -96,12 +96,17 @@ public final class CameraManager {
             Size cameraResolution = resolution;
             PreviewCallback callback = this.callback;
             if (cameraResolution != null && callback != null) {
-                int format = camera.getParameters().getPreviewFormat();
                 try {
+                    if(data == null) {
+                        throw new NullPointerException("No preview data received");
+                    }
+                    int format = camera.getParameters().getPreviewFormat();
                     SourceData source = new SourceData(data, cameraResolution.width, cameraResolution.height, format, getCameraRotation());
                     callback.onPreview(source);
-                } catch (IllegalArgumentException e) {
-                    // Image data does not match the resolution
+                } catch (RuntimeException e) {
+                    // Could be:
+                    // java.lang.RuntimeException: getParameters failed (empty parameters)
+                    // IllegalArgumentException: Image data does not match the resolution
                     Log.e(TAG, "Camera preview failed", e);
                     callback.onPreviewError(e);
                 }
@@ -446,26 +451,54 @@ public final class CameraManager {
 
     public void setTorch(boolean on) {
         if (camera != null) {
-            boolean isOn = isTorchOn();
-            if (on != isOn) {
-                if (autoFocusManager != null) {
-                    autoFocusManager.stop();
-                }
+            try {
+                boolean isOn = isTorchOn();
+                if (on != isOn) {
 
-                Camera.Parameters parameters = camera.getParameters();
-                CameraConfigurationUtils.setTorch(parameters, on);
-                if (settings.isExposureEnabled()) {
-                    CameraConfigurationUtils.setBestExposure(parameters, on);
-                }
-                camera.setParameters(parameters);
+                    if (autoFocusManager != null) {
+                        autoFocusManager.stop();
+                    }
 
-                if (autoFocusManager != null) {
-                    autoFocusManager.start();
+                    Camera.Parameters parameters = camera.getParameters();
+                    CameraConfigurationUtils.setTorch(parameters, on);
+                    if (settings.isExposureEnabled()) {
+                        CameraConfigurationUtils.setBestExposure(parameters, on);
+                    }
+                    parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                    camera.setParameters(parameters);
+
+                    if (autoFocusManager != null) {
+                        autoFocusManager.start();
+                    }
                 }
+            } catch(RuntimeException e) {
+                // Camera error. Could happen if the camera is being closed.
+                Log.e(TAG, "Failed to set torch", e);
             }
         }
     }
 
+    /**
+     * Changes the settings for Camera.
+     *
+     * @param callback {@link CameraParametersCallback}
+     */
+    public void changeCameraParameters(CameraParametersCallback callback) {
+        if (camera != null) {
+            try {
+                camera.setParameters(callback.changeCameraParameters(camera.getParameters()));
+            } catch(RuntimeException e) {
+                // Camera error. Could happen if the camera is being closed.
+                Log.e(TAG, "Failed to change camera parameters", e);
+            }
+        }
+    }
+
+    /**
+     *
+     * @return true if the torch is on
+     * @throws RuntimeException if there is a camera error
+     */
     public boolean isTorchOn() {
         Camera.Parameters parameters = camera.getParameters();
         if (parameters != null) {

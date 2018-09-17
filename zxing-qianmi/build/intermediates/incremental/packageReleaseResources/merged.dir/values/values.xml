@@ -19,6 +19,7 @@
     <declare-styleable name="zxing_finder"><attr format="color" name="zxing_possible_result_points"/><attr format="color" name="zxing_result_view"/><attr format="color" name="zxing_viewfinder_laser"/><attr format="color" name="zxing_viewfinder_mask"/><attr format="color" name="zxing_frame_color"/></declare-styleable>
     <declare-styleable name="zxing_view"><attr format="reference" name="zxing_scanner_layout"/></declare-styleable>
     <item name="zxing_back_button" type="id"/>
+    <item name="zxing_camera_closed" type="id"/>
     <item name="zxing_camera_error" type="id"/>
     <item name="zxing_decode" type="id"/>
     <item name="zxing_decode_failed" type="id"/>
